@@ -1,14 +1,21 @@
+/*
+Author: Faris Alotaibi
+Description: CRUD website for favorite albums. 
+	-View all albums in a list at the album page. 
+	-Add a new album (name, artist/bandname, rating, addtl comments)
+	-Delete an existing album 
+	-Update an existing albums Rating/Comments 
+*/
+
 package main 
 
 import ("fmt"
-		//"net"
-		//"net/http"
-		//"html/template"
 		"strings"
 		"flag"
 		"github.com/kataras/iris/v12"
 		)
 
+//I used Artist as a general term to descibe whole bands/solo musicians
 type Album struct{
 	Name string
 	Artist string 
@@ -16,16 +23,19 @@ type Album struct{
 	Comments string
 }
 
+var albumMap = map[string]*Album{}
+
+//Display the home page 
 func displayLanding(ctx iris.Context){
     ctx.HTML("<h1>Hello </h1>");
     ctx.HTML("<h2>Welcome to my website!</h2>")
     ctx.HTML(`<a href="/albums"> My favorite albums </a>`)
 }
 
+//Page to display all favorite albums
 func displayAlbums(ctx iris.Context){
 	ctx.HTML(`<h1>My fave albums (ranked in no particular order)</h1>`)
 	ctx.HTML(`<ul>%s</ul>`, listAlbumsHTML(albumMap))
-	   
 	ctx.HTML(`<a href="/albums/create"> Add new album</a><br>
 			  <a href="/albums/update"> Update album info</a><br>
 			  <a href="/albums/delete"> Remove an album</a><br>
@@ -33,12 +43,13 @@ func displayAlbums(ctx iris.Context){
 
 }
 
+//Page to create albums using html form + post request
 func displayCreate(ctx iris.Context){
 	ctx.HTML(`<h1>Add a new Album</h1>
 			  <form action="/addAlb" method="post">
 			  	<label for="AlbumName">Album Name:</label>
 			  	<input type="text" id="albName" name="albName"><br>
-			  	<label for="Artistname">Artist Name:</label>
+			  	<label for="Artistname">Band/Musician Name:</label>
 			  	<input type="text" id="artName" name="artName"><br>
 			  	<label for="Rate">Rating:</label>
 			  	<input type="radio" id="r1" name="Rating" value="1"><label for="r1">1</label><br>
@@ -53,39 +64,58 @@ func displayCreate(ctx iris.Context){
 			  <a href="/albums">Return to albums screen</a>`)
 }
 
+//Create a new album and add it to the list 
 func processCreate(ctx iris.Context){
-	newAlbum := &Album{}
-	newAlbum.Name = ctx.FormValue("albName")
-	newAlbum.Artist = ctx.FormValue("artName")
-	newAlbum.Rating = ctx.FormValue("Rating")
-	newAlbum.Comments = ctx.FormValue("albComms")
-	albumMap[newAlbum.Name] = newAlbum
-	ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
-}
-
-func processDelete(ctx iris.Context){
-	fmt.Println("Entering processDelete")
-	albumsToDelete := ctx.FormValues()
-	for _,val := range albumsToDelete["albums"]{
-		albumMap[val] = nil
+	albName:= ctx.FormValue("albName")
+	if albumMap[albName] == nil{
+		newAlbum := &Album{}
+		newAlbum.Name = albName
+		newAlbum.Artist = ctx.FormValue("artName")
+		newAlbum.Rating = ctx.FormValue("Rating")
+		newAlbum.Comments = ctx.FormValue("albComms")
+		albumMap[newAlbum.Name] = newAlbum
+		ctx.HTML(`Added "%s" to the list of favorite albums<br>`, albName)
+	}else{ //If the album already exists in the list 
+		ctx.HTML(`"%s" is already in the list of favorite albums.<br>
+				  Try updating or deleting it instead.<br>`, albName)
 	}
 	ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
 }
 
+//Delete albums and return a delete receipt 
+func processDelete(ctx iris.Context){
+	albumsToDelete := ctx.FormValues()
+	deletedAlbstr:=""
+	for _,val := range albumsToDelete["albums"]{
+		deletedAlbstr =  deletedAlbstr +`"` + val + `"` + ","
+		delete(albumMap, val)
+	}
+
+	deletedAlbstr = deletedAlbstr[:len(deletedAlbstr)-1]
+	ctx.HTML(`Deleted %s from the album list <br>
+		     <a href="/albums">Return to albums screen</a>`, deletedAlbstr)
+}
+
+//Display albums that you can update 
 func displayUpdate(ctx iris.Context){
 	ctx.HTML(`<h1>Update Album Rating/Comments</h1>`)
-	htmlstr:=""
-	for _, album := range albumMap{
-		if album != nil{
-			htmlstr = htmlstr + fmt.Sprintf(`<a href="/albums/update/%[2]s">Update %[1]s's Rating/Comments</a><br>`, 
+	if len(albumMap) == 0{
+		ctx.HTML(`Nothing to update.<br>
+				  <a href="/albums">Return to albums screen</a>`)
+	}else{
+		htmlstr:=""
+		for _, album := range albumMap{
+			htmlstr = htmlstr + fmt.Sprintf(`<a href="/albums/update/%[2]s">Update "%[1]s" Rating/Comments</a><br>`, 
 				album.Name, strings.ReplaceAll(album.Name," ", "_"))
+		/*To get a working link I had to replace all spaces in the album name with underscores
+		It gets replaced back to its original form in displayAlbumUpdate*/
 		}
+		ctx.HTML(htmlstr + `<br>`)
+		ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
 	}
-	ctx.HTML(htmlstr + `<br>`)
-	ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
-
 }
 
+//Similar form to the create, but Album name + Artist fields are marked readonly
 func displayAlbumUpdate(ctx iris.Context){
 	aName:=ctx.Params().Get("albumname")
 	aName = strings.ReplaceAll(aName, "_", " ")
@@ -94,7 +124,7 @@ func displayAlbumUpdate(ctx iris.Context){
 	ctx.HTML(`<form action="/updateconf" method="post">
 			  	<label for="AlbumName">Album Name:</label>
 			  	<input type="text" id="albName" name="albName" value="%s" readonly><br>
-			  	<label for="Artistname">Artist Name:</label>
+			  	<label for="Artistname">Band/Musician Name:</label>
 			  	<input type="text" id="artName" name="artName" value="%s" readonly><br>
 			  	<label for="Rate">Rating:</label>
 			  	<input type="radio" id="r1" name="Rating" value="1"><label for="r1">1</label><br>
@@ -110,7 +140,7 @@ func displayAlbumUpdate(ctx iris.Context){
 		      <a href="/albums">Return to albums screen</a>`)
 	
 }
-
+//This processes the rating/comment of an album
 func processUpdate(ctx iris.Context){
 	albname := ctx.FormValue("albName")
 	album := albumMap[albname]
@@ -119,38 +149,41 @@ func processUpdate(ctx iris.Context){
 	ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
 }
 
+//This displays potential albums to delete
 func displayDelete(ctx iris.Context){
 	ctx.HTML(`<h1>Delete an album (are you sure?)</h1>`)
-	htmlstr:=`<form action="/delAlb" method="post">`
-	for _, val:= range albumMap{
-		if val != nil{
+	if len(albumMap) == 0{ //If there are none, display nothing
+		ctx.HTML(`Nothing to delete.<br>
+			      <a href="/albums">Return to albums screen</a> `)
+	}else{	
+		htmlstr:=`<form action="/delAlb" method="post">`
+		for _, val:= range albumMap{
 			htmlstr = htmlstr + fmt.Sprintf(`<input type="checkbox" id="%[1]s" name="albums" value="%[1]s">
 			                             <label for="%[1]s">%[1]s</label><br>`, val.Name)
 		}
+		htmlstr = htmlstr + `<input type="submit" value="Delete Selections"></form><br>`
+		ctx.HTML(htmlstr)
+		ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
 	}
-	htmlstr = htmlstr + `<input type="submit" value="Delete Selections"></form><br>`
-	ctx.HTML(htmlstr)
-	ctx.HTML(`<a href="/albums">Return to albums screen</a>`)
 }
 
-
+//Takes a single album and formats it to a list item 
 func albumToHTMLString (album *Album) string{
 	return fmt.Sprintf(`<li> "%s" by %s<br> Rating:%s<br> Comments:"%s"</li>`, album.Name, album.Artist, album.Rating, album.Comments)
 }
 
+//Uses the above to generate list items for all albums
 func listAlbumsHTML(albumMap map[string]*Album) string{
 	retstr:=""
 	for _, album:= range albumMap{
-		if album != nil{
-			retstr = retstr + albumToHTMLString(album)
-		}
+		retstr = retstr + albumToHTMLString(album)
 	}
 	return retstr
 }
 
-var albumMap = map[string]*Album{}
 
 func main(){
+	//Debated on using string vs int vars earlier, realized it ultimately wouldnt matter
 	var defaultport int
 	flag.IntVar(&defaultport, "listen", 8080, "used to create the server")
 	flag.Parse()
