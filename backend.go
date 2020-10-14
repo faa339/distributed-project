@@ -1,3 +1,13 @@
+/*
+Author: Faris Alotaibi
+Description: Backend of CRUD website for favorite albums. 
+	-Handles all data transactions from the frontend. 
+Note: I added \n to the end of many returns due to how 
+Scan() works. It hangs up if it doesn't detect an ending character
+(or an empty line) so appending "\n" to returns sent back through
+Fprint kept things moving.
+*/
+
 package main; 
 
 import ("fmt"
@@ -8,6 +18,8 @@ import ("fmt"
 		"strings"
 		)
 
+//Custom struct for albums -- I use artist to denote 
+//individual singers or full bands
 type Album struct{
 	Name string
 	Artist string 
@@ -17,18 +29,19 @@ type Album struct{
 
 var albumMap = map[string]*Album{}
 
-func albumToHTMLString (album *Album) string{
-	return fmt.Sprintf(`<li> "%s" by %s<br> Rating:%s<br> Comments:"%s"</li>`, album.Name, album.Artist, album.Rating, album.Comments)
-}
-
+//This function returns all info about every album in the map
 func G_ALL() string{
-	retstr:=""
+	retstr:="{"
 	for _, album:=range albumMap{
-		retstr = retstr + albumToHTMLString(album)		
+		retstr = retstr + fmt.Sprintf("[%s,%s,%s,%s],",
+			     album.Name, album.Artist, album.Rating, album.Comments)		
 	}
+	retstr = retstr[:len(retstr)-1]
+	retstr = retstr + "}"
 	return retstr
 }
 
+//This function returns all album names in the map
 func G_NAM() string{
 	retstr:=""
 	if len(albumMap) == 0{
@@ -40,11 +53,13 @@ func G_NAM() string{
 	return retstr
 }
 
+//This function returns all info about a specific album 
 func G_ALB(name string) string{
 	album := albumMap[name]
 	return fmt.Sprintf("%s,%s,%s,%s", album.Name, album.Artist, album.Rating, album.Comments)
 }
 
+//This function adds an album to the map
 func CREAT(vals string) string{
 	albarr := strings.Split(vals,",")
 	if albumMap[albarr[0]] != nil{
@@ -55,6 +70,7 @@ func CREAT(vals string) string{
 	}
 }
 
+//This function updates an albums ratings & comments in the map 
 func UPDAT(vals string) string{
 	updtarr := strings.Split(vals,",")
 	album := albumMap[updtarr[0]]
@@ -63,6 +79,7 @@ func UPDAT(vals string) string{
 	return "\n"
 }
 
+//This function removes an album from the map
 func DELET(vals string) string{
 	deleteAlbs := strings.Split(vals,",")
 	for _, album:= range deleteAlbs{
@@ -72,7 +89,6 @@ func DELET(vals string) string{
 }
 
 func main(){
-	//Debated on using string vs int vars earlier, realized it ultimately wouldnt matter
 	var defaultport string
 	flag.StringVar(&defaultport, "listen", "8090", "used to create the server")
 	flag.Parse()
@@ -102,7 +118,7 @@ func main(){
 		os.Exit(1)
 	}
 
-	for{
+	for{ //Continously accept connections until close
 		conn, err := ln.Accept()
 		if err!=nil{
 			fmt.Fprint(os.Stderr, "Failed to accept")
@@ -113,7 +129,7 @@ func main(){
 		scanner.Scan()
 		req := scanner.Text()
 
-		switch req[0:5]{
+		switch req[0:5]{ //Figure out our operation
 		case "G_ALL":
 			result:= G_ALL() + "\n"
 			fmt.Fprint(conn, result)

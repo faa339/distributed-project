@@ -1,0 +1,44 @@
+This was compiled using go 1.15.2 linux/amd64 and kataras iris v12. 
+
+To compile and run, 
+	1. go build frontend.go
+	2. go build backend.go
+	3. ./frontend [--listen PORTNUM] [--backend HOST:PORTNUM]
+	4. ./backend [--listen PORTNUM]
+Make sure all files are within the same directory
+
+Assignment was completed with minimal issues. Beyond go docs and 
+provided example code, I used this to help with understanding 
+splitting with multiple delimeters better 
+	https://stackoverflow.com/questions/39862613/how-to-split-a-string-by-multiple-delimiters-in-golang
+
+In separating the original file into front and backend, I elected
+to make my own string-based protocol to communicate operations. 
+Specifically, in the format of OPNAME VALUES.
+		G_ALL "":
+             get all info about all albums in the database
+		CREAT {albumname, artistname, rating, comments}:
+             add album to the database (expect _ if already in)
+        G_NAM "":
+             get all album names for update/delete display
+        G_ALB {albumname}:
+        	 get info about a single album in the database
+        UPDAT {albumname, rating, comments}:
+             update album with new rating & comments
+        DELET {albumname}:
+             delete album(s) from database 
+Each of these commands were compounded into a single string and sent
+to the backend. The backend would then separate the string into a code
+and a set of values, then perform an operation before returning a 
+result. 
+The advantage of this approach in that information can be sent 
+quickly and efficiently between both ends of the server. 
+The disadvantage of this approach is that there is no encryption
+for data. While not too important for this project, that could be 
+fatal in a more important and larger system. This might also fall 
+apart if the number of albums within the database got too big (due 
+to potential sending limits with connections causing data to not 
+be fully sent in one Fprint)
+Overall, the instructions of the assignment were clear and concise. 
+There was plenty of support provided from both the resources and the 
+professor. The work itself was interesting and I enjoyed it.

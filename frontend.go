@@ -1,6 +1,6 @@
 /*
 Author: Faris Alotaibi
-Description: CRUD website for favorite albums. 
+Description: frontend of CRUD website for favorite albums. 
 	-View all albums in a list at the album page. 
 	-Add a new album (name, artist/bandname, rating, addtl comments)
 	-Delete an existing album 
@@ -17,6 +17,7 @@ import ("fmt"
 		"strings"
 		)
 
+//Kept as a global for easy access to backend
 var backendport string
 
 /*
@@ -38,7 +39,7 @@ var backendport string
   Required info per call is passed in the values parameter
 */
 func sendReq(operation string, values string) string{
-	results := "_"
+	results := "_" //Default return if connection errors arise
 	conn, err:= net.Dial("tcp", backendport)
 	if err!=nil{
 		fmt.Println("Error connecting to backend")
@@ -46,7 +47,7 @@ func sendReq(operation string, values string) string{
 	}
 	defer conn.Close()
 	pscanner := bufio.NewScanner(conn)
-	passin:= operation + " " + values + "\n"
+	passin:= operation + " " + values + "\n" //Sending \n to prevent Scan() from blocking
 	fmt.Fprintf(conn,passin)
 	if pscanner.Scan(){
 		results=pscanner.Text()
@@ -62,12 +63,35 @@ func displayLanding(ctx iris.Context){
     ctx.HTML(`<a href="/albums"> My favorite albums </a>`)
 }
 
+//Format album data into multiple list items to display info 
+//Albums sent to this are sent as one big string where individual 
+//albums are identified by brackets. They are split using a custom 
+//split function, but this causes , to be identified as an item too
+//so it is subsequently ignored 
+func albumsToHTMLLi (albums string) string{
+	htmlstr:=""
+	albumsList := strings.FieldsFunc(albums, Split)
+	for _, albumstring:=range albumsList{
+		if albumstring == ","{continue} 
+		album := strings.Split(albumstring, ",")
+		htmlstr = htmlstr + fmt.Sprintf(`<li> "%s" by %s<br> Rating:%s<br> Comments:"%s"</li>`, 
+                               album[0], album[1], album[2], album[3])
+	}
+	return htmlstr
+}
+
+//Custom split function that'll create new tokens on the presence of either bracket
+func Split(r rune) bool{
+	return r=='[' || r==']' 
+}
+
 //Page to display all favorite albums
 func displayAlbums(ctx iris.Context){
 	ctx.HTML(`<h1>My fave albums (ranked in no particular order)</h1>`)
 	result := sendReq("G_ALL", "")
 	if result != ""{
-		ctx.HTML(`<ul>%s</ul>`,result )
+		result = result[1:len(result)-1]
+		ctx.HTML(`<ul>%s</ul>`, albumsToHTMLLi(result))
 		ctx.HTML(`<a href="/albums/create"> Add new album</a><br>
 				  <a href="/albums/update"> Update album info</a><br>
 				  <a href="/albums/delete"> Remove an album</a><br>
