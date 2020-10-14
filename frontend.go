@@ -4,7 +4,8 @@ Description: frontend of CRUD website for favorite albums.
 	-View all albums in a list at the album page. 
 	-Add a new album (name, artist/bandname, rating, addtl comments)
 	-Delete an existing album 
-	-Update an existing albums Rating/Comments 
+	-Update an existing albums Rating/Comments
+pass in --listen [PORTNUM] --backend [HOSTNAME:PORTNUM] 
 */
 
 package main 
@@ -27,7 +28,7 @@ var backendport string
 		G_ALL:
              get all info about all albums in the database
 		CREAT:
-             add album to the database (expect _ if already in)
+             add album to the database (expect '-' if already in)
         G_NAM:
              get all album names for update/delete display
         G_ALB:

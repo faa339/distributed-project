@@ -2,10 +2,14 @@
 Author: Faris Alotaibi
 Description: Backend of CRUD website for favorite albums. 
 	-Handles all data transactions from the frontend. 
+
+pass in --listen [PORTNUM]
+
 Note: I added \n to the end of many returns due to how 
 Scan() works. It hangs up if it doesn't detect an ending character
 (or an empty line) so appending "\n" to returns sent back through
 Fprint kept things moving.
+
 */
 
 package main; 

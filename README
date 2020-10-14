@@ -3,8 +3,8 @@ This was compiled using go 1.15.2 linux/amd64 and kataras iris v12.
 To compile and run, 
 	1. go build frontend.go
 	2. go build backend.go
-	3. ./frontend [--listen PORTNUM] [--backend HOST:PORTNUM]
-	4. ./backend [--listen PORTNUM]
+	3. ./backend [--listen PORTNUM]
+	4. ./frontend [--listen PORTNUM] [--backend HOST:PORTNUM]
 Make sure all files are within the same directory
 
 Assignment was completed with minimal issues. Beyond go docs and 
