@@ -48,7 +48,10 @@ func sendReq(operation string, values string) string{
 	}
 	defer conn.Close()
 	pscanner := bufio.NewScanner(conn)
-	passin:= operation + " " + values + "\n" //Sending \n to prevent Scan() from blocking
+	//Backend reads with .Scan too -- need to make sure theres no bad 
+	//inputs with \n in them. Sorry if your band  is called "\n and the magic spaces!"
+	values = strings.ReplaceAll(values, "\n", " ") 
+	passin:= operation + " " + values + "\n" 
 	fmt.Fprintf(conn,passin)
 	if pscanner.Scan(){
 		results=pscanner.Text()
