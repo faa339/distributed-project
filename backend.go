@@ -20,6 +20,7 @@ import ("fmt"
 		"os"
 		"bufio"
 		"strings"
+		"sync"
 		)
 
 //Custom struct for albums -- I use artist to denote 
@@ -32,64 +33,132 @@ type Album struct{
 }
 
 var albumMap = map[string]*Album{}
+var albumMutex sync.RWMutex
 
-//This function returns all info about every album in the map
-func G_ALL() string{
+
+// This function handles sending all album info 
+// to a frontend client.
+func G_ALL(c net.Conn) {
 	retstr:="{"
+	albumMutex.RLock()
 	for _, album:=range albumMap{
 		retstr = retstr + fmt.Sprintf("[%s,%s,%s,%s],",
 			     album.Name, album.Artist, album.Rating, album.Comments)		
 	}
+	albumMutex.RUnlock()
 	retstr = retstr[:len(retstr)-1]
-	retstr = retstr + "}"
-	return retstr
+	retstr = retstr + "}\n"
+	fmt.Fprint(c, retstr)
+	c.Close()
+	fmt.Println("G_ALL sent")
 }
 
-//This function returns all album names in the map
-func G_NAM() string{
+// This function handles sending all album 
+// names to a client
+func G_NAM(c net.Conn) {
 	retstr:=""
+	albumMutex.RLock()
 	if len(albumMap) == 0{
-		return "-"
+		retstr = "-\n"
+		fmt.Fprintf(c, retstr)
+	}else{
+		for _, album:= range albumMap{
+			retstr = retstr + album.Name + ","
+		}
+		fmt.Fprint(c, retstr)
 	}
-	for _, album:= range albumMap{
-		retstr = retstr + album.Name + ","
-	}
-	return retstr
+	albumMutex.RUnlock()
+	c.Close()
+	fmt.Println("G_NAM sent")
 }
 
-//This function returns all info about a specific album 
-func G_ALB(name string) string{
+// This function handles sending a specific
+// album's information to a client
+// album name -> send album data  
+func G_ALB(name string, c net.Conn) {
+	albumMutex.RLock()
 	album := albumMap[name]
-	return fmt.Sprintf("%s,%s,%s,%s", album.Name, album.Artist, album.Rating, album.Comments)
+	albumMutex.RUnlock()
+	retstr:=fmt.Sprintf("%s,%s,%s,%s", album.Name, album.Artist, album.Rating, album.Comments)
+	fmt.Fprint(c, retstr)
+	c.Close()
+	fmt.Println("G_ALB sent")
 }
 
-//This function adds an album to the map
-func CREAT(vals string) string{
+// This function handles creating a new 
+// album in the map with arguments 
+// album information -> add to map 
+func CREAT(vals string, c net.Conn) {
 	albarr := strings.Split(vals,",")
+	retstr:=""
+	albumMutex.Lock()
 	if albumMap[albarr[0]] != nil{
-		return "-\n"
+		retstr="-\n"
+		fmt.Fprint(c, retstr)
 	}else{
 		albumMap[albarr[0]] = &Album{albarr[0], albarr[1], albarr[2], albarr[3]}
-		return "\n"
+		retstr="\n"
+		fmt.Fprint(c, retstr)
 	}
+	albumMutex.Unlock()
+	c.Close()
+	fmt.Println("CREAT sent")
 }
 
-//This function updates an albums ratings & comments in the map 
-func UPDAT(vals string) string{
+// This function handles updating an albums 
+// comments & rating 
+// new info -> update info 
+func UPDAT(vals string, c net.Conn) {
 	updtarr := strings.Split(vals,",")
+	albumMutex.Lock()
 	album := albumMap[updtarr[0]]
 	album.Rating = updtarr[1]
 	album.Comments = updtarr[2]
-	return "\n"
+	albumMutex.Unlock()
+	fmt.Fprint(c, "\n")
+	c.Close()
+	fmt.Println("UPDAT sent")
 }
 
-//This function removes an album from the map
-func DELET(vals string) string{
+// This function removes an album from the map 
+// album name -> remove from map 
+func DELET(vals string, c net.Conn) {
 	deleteAlbs := strings.Split(vals,",")
+	albumMutex.Lock()
 	for _, album:= range deleteAlbs{
 		delete(albumMap, album)
 	}
-	return "\n"
+	albumMutex.Unlock()
+	fmt.Fprint(c,"\n")
+	c.Close()
+	fmt.Println("DELET sent")
+}
+
+// This function handles requests for 
+// individual connections to speed 
+// things up
+func ConnHandle(c net.Conn){
+	scanner:=bufio.NewScanner(c)
+	scanner.Scan()
+	req := scanner.Text()
+	if req == ""{ //Ping from frontend, ignore it. 
+		c.Close()
+		return
+	}
+	switch req[0:5]{ //Figure out our operation
+	case "G_ALL":
+		go G_ALL(c)
+	case "CREAT":
+		go CREAT(req[7:len(req)-1], c)
+	case "G_NAM":
+		go G_NAM(c)
+	case "G_ALB":
+		go G_ALB(req[7:len(req)-1], c)
+	case "UPDAT":
+		go UPDAT(req[7:len(req)-1], c)
+	case "DELET":
+		go DELET(req[7:len(req)-1], c)
+	}
 }
 
 func main(){
@@ -97,8 +166,10 @@ func main(){
 	flag.StringVar(&defaultport, "listen", "8090", "used to create the server")
 	flag.Parse()
 
-	var usedport string
-	usedport = fmt.Sprintf(":%s", defaultport)
+	//determine if default or not
+	if len(defaultport) == 4{
+		 defaultport = fmt.Sprintf(":%s", defaultport)
+	}
 	
 	albumMap["The Beginning Of Times"] = &Album{"The Beginning Of Times",
 												 "Amorphis",
@@ -116,57 +187,18 @@ func main(){
 											   "5",
 											  "Very mellow"}
 
-	ln, err := net.Listen("tcp", usedport)
+	ln, err := net.Listen("tcp", defaultport)
 	if err != nil{
 		fmt.Println("Couldnt bind socket ", err)
 		os.Exit(1)
 	}
 
-	for{ //Continously accept connections until close
+	for{ //Continously accept connections, then send it off to do a request
 		conn, err := ln.Accept()
 		if err!=nil{
 			fmt.Fprint(os.Stderr, "Failed to accept")
 			os.Exit(1)
 		}
-		fmt.Println("Conn accepted")
-		scanner:=bufio.NewScanner(conn)
-		scanner.Scan()
-		req := scanner.Text()
-
-		switch req[0:5]{ //Figure out our operation
-		case "G_ALL":
-			result:= G_ALL() + "\n"
-			fmt.Fprint(conn, result)
-			fmt.Println("G_ALL sent")
-			conn.Close()
-		case "CREAT":
-			vals := req[7:len(req)-1]
-			result := CREAT(vals)
-			fmt.Fprint(conn, result)
-			conn.Close()
-		case "G_NAM":
-			result:= G_NAM() + "\n"
-			fmt.Fprint(conn, result)
-			fmt.Println("G_NAM sent")
-			conn.Close()
-		case "G_ALB":
-			name:= req[7:len(req)-1]
-			result := G_ALB(name) + "\n"
-			fmt.Fprint(conn, result)
-			fmt.Println("G_ALB sent")
-			conn.Close()
-		case "UPDAT":
-			vals:= req[7:len(req)-1]
-			result := UPDAT(vals)
-			fmt.Fprint(conn, result)
-			fmt.Println("UPDAT sent")
-			conn.Close()
-		case "DELET":
-			vals:= req[7:len(req)-1]
-			result := DELET(vals)
-			fmt.Fprint(conn, result)
-			fmt.Println("DELET sent")
-			conn.Close()
-		}
+		go ConnHandle(conn)
 	}
 }

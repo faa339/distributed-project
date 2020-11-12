@@ -16,6 +16,8 @@ import ("fmt"
 		"net"
 		"bufio"
 		"strings"
+		"time"
+		"os"
 		)
 
 //Kept as a global for easy access to backend
@@ -60,7 +62,7 @@ func sendReq(operation string, values string) string{
 }
 
 
-//Display the home page 
+//Display the home page (no input or output)
 func displayLanding(ctx iris.Context){
     ctx.HTML("<h1>Hello </h1>");
     ctx.HTML("<h2>Welcome to my website!</h2>")
@@ -68,10 +70,8 @@ func displayLanding(ctx iris.Context){
 }
 
 //Format album data into multiple list items to display info 
-//Albums sent to this are sent as one big string where individual 
-//albums are identified by brackets. They are split using a custom 
-//split function, but this causes , to be identified as an item too
-//so it is subsequently ignored 
+//input: string of all albums and their information 
+//output: HTML string of multiple li's 
 func albumsToHTMLLi (albums string) string{
 	htmlstr:=""
 	albumsList := strings.FieldsFunc(albums, Split)
@@ -90,6 +90,8 @@ func Split(r rune) bool{
 }
 
 //Page to display all favorite albums
+//no input, get all album info from backend
+//no output, displays album info
 func displayAlbums(ctx iris.Context){
 	ctx.HTML(`<h1>My fave albums (ranked in no particular order)</h1>`)
 	result := sendReq("G_ALL", "")
@@ -112,6 +114,7 @@ func displayAlbums(ctx iris.Context){
 
 
 //Page to create albums using html form + post request
+//no input, puts form values into ctx on submit button click
 func displayCreate(ctx iris.Context){
 	ctx.HTML(`<h1>Add a new Album</h1>
 			  <form action="/addAlb" method="post">
@@ -132,7 +135,9 @@ func displayCreate(ctx iris.Context){
 			  <a href="/albums">Return to albums screen</a>`)
 }
 
-//Create a new album and add it to the list 
+//Create a new album and add it to the list
+//input: ctx formvalues 
+//output: confirmation of data send
 func processCreate(ctx iris.Context){
 	albName:= ctx.FormValue("albName")
 	artName:= ctx.FormValue("artName")
@@ -150,6 +155,8 @@ func processCreate(ctx iris.Context){
 }
 
 //Delete albums and return a delete receipt 
+//input is formvalues 
+//output is delete confirmation
 func processDelete(ctx iris.Context){
 	albumsToDelete := ctx.FormValues()["albums"]
 	if len(albumsToDelete) == 0{
@@ -168,6 +175,8 @@ func processDelete(ctx iris.Context){
 }
 
 //Display albums that you can update 
+//no input (request data from backend)
+//output is display page 
 func displayUpdate(ctx iris.Context){
 	ctx.HTML(`<h1>Update Album Rating/Comments</h1>`)
 	albumnames:= sendReq("G_NAM", "")
@@ -188,6 +197,8 @@ func displayUpdate(ctx iris.Context){
 }
 
 //Similar form to the create, but Album name + Artist fields are marked readonly
+//input is ctx, album info taken from backend 
+//output is display form correctly
 func displayAlbumUpdate(ctx iris.Context){
 	aName:=ctx.Params().Get("albumname")
 	aName = strings.ReplaceAll(aName, "_", " ")
@@ -215,6 +226,8 @@ func displayAlbumUpdate(ctx iris.Context){
 }
 
 //This processes the rating/comment of an album
+//input is the formvalues 
+//output is confirmation page for update
 func processUpdate(ctx iris.Context){
 	albName := ctx.FormValue("albName")
 	rating := ctx.FormValue("Rating")
@@ -231,6 +244,8 @@ func processUpdate(ctx iris.Context){
 }
 
 //This displays potential albums to delete
+//no input -- info taken from backend 
+//output is display potential albums to delete
 func displayDelete(ctx iris.Context){
 	ctx.HTML(`<h1>Delete an album (are you sure?)</h1>`)
 	albumnames := sendReq("G_NAM", "")
@@ -251,16 +266,39 @@ func displayDelete(ctx iris.Context){
 	}
 }
 
+// This will continously ping 
+// backend to check for failure
+func failureDetector(){
+	timeformat := "2006-01-02 15:04:05 +0000 UTC"
+	for{
+		conn, err:= net.Dial("tcp", backendport)
+		if err != nil{
+			x:=time.Now().UTC()
+			failstr:= "Deceted failure on " + backendport +" at " + x.Format(timeformat) + "\n"
+			fmt.Fprint(os.Stderr, failstr)
+			time.Sleep(time.Second)
+		}else{
+			fmt.Fprint(conn, "\n")
+			conn.Close()
+		}
+	}
+}
+
 func main(){
 	var frontendport string
 	flag.StringVar(&frontendport, "listen", "8080", "accept connections here. provide a port number [port]")
 	flag.StringVar(&backendport, "backend", ":8090", "conect to backend. provide a host name and port [hostname:port] or just a port [:port]")
 	flag.Parse()
 
-	usedFEnd := fmt.Sprintf(":%s", frontendport)
+	//For both ifs, determine if the defaults were given
+	if len(frontendport) == 4{
+		frontendport = fmt.Sprintf(":%s", frontendport)
+	}
 	if len(backendport) == 5{
 		backendport = fmt.Sprintf("localhost%s", backendport)
 	}
+	
+	go failureDetector()
 
 	app := iris.Default()
     app.Get("/", displayLanding)
@@ -272,7 +310,7 @@ func main(){
     app.Post("/addAlb", processCreate)
     app.Post("/delAlb", processDelete)
     app.Post("/updateconf", processUpdate)
-    app.Run(iris.Addr(usedFEnd))
+    app.Run(iris.Addr(frontendport))
     
 }
 
