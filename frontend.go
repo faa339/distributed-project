@@ -18,10 +18,11 @@ import ("fmt"
 		"strings"
 		"time"
 		"os"
+		"strconv"
 		)
 
 //Kept as a global for easy access to backend
-var backendport string
+var leaderport string
 
 /*
   This function handles getting results from the backend
@@ -43,7 +44,7 @@ var backendport string
 */
 func sendReq(operation string, values string) string{
 	results := "_" //Default return if connection errors arise
-	conn, err:= net.Dial("tcp", backendport)
+	conn, err:= net.Dial("tcp", leaderport)
 	if err!=nil{
 		fmt.Println("Error connecting to backend")
 		return results
@@ -146,7 +147,11 @@ func processCreate(ctx iris.Context){
 	album:= fmt.Sprintf(`{%s,%s,%s,%s}`, albName, artName, rating, comms)
 	res := sendReq("CREAT", album)
 	if res != "-"{
-		ctx.HTML(`Added "%s" to the list of favorite albums<br>`, albName)
+		if res=="/"{
+			ctx.HTML(`Could not add to album list (servers potentially down)`)
+		}else{
+			ctx.HTML(`Added "%s" to the list of favorite albums<br>`, albName)
+		}
 	}else{
 		ctx.HTML(`"%s" is already in the list of favorite albums.<br>
 				  Try updating or deleting it instead.<br>`, albName)
@@ -169,6 +174,9 @@ func processDelete(ctx iris.Context){
 		result := sendReq("DELET", sentVal)
 		if result == "" {
 			ctx.HTML(`Deleted "%s" from the album list <br>
+			     <a href="/albums">Return to albums screen</a>`, albumsString)
+		}else{
+			ctx.HTML(`Could not delete from list (servers potentially down) <br>
 			     <a href="/albums">Return to albums screen</a>`, albumsString)
 		}
 	}
@@ -233,13 +241,18 @@ func processUpdate(ctx iris.Context){
 	rating := ctx.FormValue("Rating")
 	comments := ctx.FormValue("albComms")
 	values := fmt.Sprintf("{%s,%s,%s}", albName, rating, comments)
-	fmt.Println(values)
+	// fmt.Println(values)
 	res := sendReq("UPDAT", values)
 	if res == "_"{
 		fmt.Println("Error in retrieving values")
 	}else{
-		ctx.HTML(`Info for "%s" updated. <br>
-			     <a href="/albums">Return to albums screen</a>`, albName)
+		if res=="/"{
+			ctx.HTML(`Could not update album (servers potentially down) <br>
+			         <a href="/albums">Return to albums screen</a>`)
+		}else{
+			ctx.HTML(`Info for "%s" updated. <br>
+				     <a href="/albums">Return to albums screen</a>`, albName)
+		}
 	}
 }
 
@@ -266,26 +279,58 @@ func displayDelete(ctx iris.Context){
 	}
 }
 
+
+//This function will get a new leader if the original one 
+//fails 
+func recoverConnection(backends []string) string{
+	actualLeader := ""
+	maxElec := 0
+	for _, node := range backends{
+		c, err:= net.Dial("tcp", node)
+		if err==nil{
+			fmt.Fprint(c, "L____\n")
+			pscanner:=bufio.NewScanner(c)
+			if pscanner.Scan(){
+				res := pscanner.Text()
+				if res != "NL"{
+					elecstate,_ := strconv.Atoi(string(res[0]))
+					if elecstate > maxElec{
+						actualLeader = res[2:len(res)]
+					}
+				}
+			}
+		}
+	}
+	return actualLeader
+}
+
 // This will continously ping 
 // backend to check for failure
-func failureDetector(){
-	timeformat := "2006-01-02 15:04:05 +0000 UTC"
+func failureDetector(backends []string){
 	for{
-		conn, err:= net.Dial("tcp", backendport)
+		conn, err:= net.Dial("tcp", leaderport)
 		if err != nil{
-			x:=time.Now().UTC()
-			failstr:= "Deceted failure on " + backendport +" at " + x.Format(timeformat) + "\n"
-			fmt.Fprint(os.Stderr, failstr)
-			time.Sleep(time.Second)
+			// fmt.Println(err)
+			fmt.Fprint(os.Stderr, failTimeGen())
+			leaderport = recoverConnection(backends)
+			time.Sleep(time.Second * time.Duration(5))
 		}else{
 			fmt.Fprint(conn, "\n")
 			conn.Close()
+			leaderport = recoverConnection(backends)
 		}
 	}
 }
 
+func failTimeGen() string{
+	timeformat := "2006-01-02 15:04:05 +0000 UTC"
+	x:=time.Now().UTC()
+	return "Detected failure on " + leaderport +" at " + x.Format(timeformat) + "\n"
+}
+
 func main(){
 	var frontendport string
+	var backendport string
 	flag.StringVar(&frontendport, "listen", "8080", "accept connections here. provide a port number [port]")
 	flag.StringVar(&backendport, "backend", ":8090", "conect to backend. provide a host name and port [hostname:port] or just a port [:port]")
 	flag.Parse()
@@ -294,12 +339,10 @@ func main(){
 	if len(frontendport) == 4{
 		frontendport = fmt.Sprintf(":%s", frontendport)
 	}
-	if len(backendport) == 5{
-		backendport = fmt.Sprintf("localhost%s", backendport)
-	}
-	
-	go failureDetector()
-
+	//TODO: figure out the leader then connect there
+	backends:= strings.Split(backendport, ",")
+	//Initial assumption; will change after a run of the failure detector
+	leaderport = recoverConnection(backends)
 	app := iris.Default()
     app.Get("/", displayLanding)
     app.Get("/albums", displayAlbums)
@@ -310,6 +353,8 @@ func main(){
     app.Post("/addAlb", processCreate)
     app.Post("/delAlb", processDelete)
     app.Post("/updateconf", processUpdate)
+
+	go failureDetector(backends)
     app.Run(iris.Addr(frontendport))
     
 }
