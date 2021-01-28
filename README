@@ -15,27 +15,3 @@ backends down can ultimately cause issues though it shouldn't.
 I just ended up experiencing the worst burnout during the last 
 days of this project and ultimately couldn't bring myself to 
 iron everything out. 
-
-For the test cases: 
-	The program can withstand the failure of up to n-1/2 replicas. 
-	The replicas can be restarted and sync; unsure if their data will
-	    also be sync'd up, though it should 
-	The program should still work when disjoint sets are taken down 
-	    and started up again 
-	If a majority fails, writes will not succeed 
-	Terminated ones will resynch and allow for normal function after 
-	    a delay. 
-
-I chose to use Raft while implementing this, in the hopes that it 
-would be simpler to understand and code. I think that my replication
-strategy, at its heart, should be effective and work; managing the 
-logs and elections in the way that I did proved to work in most cases. 
-Key to this was identifying that only three operations needed quorum at 
-all, which allowed for the simplification of everything else. I use
-a separate goroutine and channel to avoid blocking; whenever a new connection
-arrives, it's put into a channel to be handled by the backend. This prevents
-blocking provided that the channel does not fill up and the backend is able
-to make progress in the algorithm. 
-
-I just wanted to thank the TAs and professor for an amazing course.
-I've learned a lot through the continued efforts of you all; thank you!  
